@@ -1,19 +1,29 @@
+require(here)
+
+source(here::here("input_checking.R"))
+
 ### ransac ###
 ## inputs
-# @data - is a data-frame that contains the data
-# @estimate_model - is a function that 
+# @formula - is a formula that is used to fit the linear models
+# @data - is a data-frame that contains all the relevant data 
+# @error_threshold - is a positive numeric-value that gives the threshold 
+#   when a point that is not used in the fitting process is also 'accepted' as
+#   a inlier
+# @inlier_threshold - is a count > 0 that indicates how many points - that are 
+#   not used in the fitting proces - must have a loss smaller than error_threshold
+#   such that the model is actually considered a candidate
+# @iterations - the number of sub-samples (or sub-models) that are to be fitted
+# @sample_size - size of the random sample that is used for the fitting of
+#   the sub-model 
+# @inlier_loss - which metric do we use to assess whether points have an 
+#   acceptable distance to the fitted model: is a function f(y, y_pred) that
+#   is VECTORIZABLE
+#   ARGUMENTS MUST ALSO BE CALLED LIKE THAT
+# @model_loss - how do we assess the quality of the whole model - 
+#   should in the most cases be identical to the inlier_loss and must also have 
+#   the form f(y, y_pred) and must also be VECTORIZABLE 
 
-#' Pseudocode
-#' Initialize error <- Inf
-#' Repeat iterations times 
-#' Initialize maybe_inliers <- Sample sample_size points randomly
-#' Fit linear model with formula: maybe_model <- lm(formula, data, subset = maybe_inliers)
-#' 
-#' Initialize a vector (inLier) that has length n_data - sample_size
-#' for all points that are not in the random sample
-#' add them to inLier if the loss (y_pred, y) is smaller than inlier_threshold
-#' fit model to maybe_inliers & inliers
-#' 
+
 
 
 ## question: how do I minimize overhead ??? 
@@ -22,7 +32,39 @@
 ## question: do we need more than one seed, are there other stochastic elements
 # execpt for the sampling (?) I guess not
 
+# we distinguish two cases: parellelized computation and non-parallelized computation
+
+
 ransac <- function(formula, data, error_threshold, inlier_threshold, iterations, 
+                   sample_size, inlier_loss, model_loss = inlier_loss, seed = 314L, 
+                   paralell = FALSE)  {
+  
+  # do input-checking and create the design-matrix, n_missings and the 
+  # corsponding y-matrix/vector
+  checked_input <- check_inputs(formula, data, error_threshold, inlier_threshold, iterations, 
+                                sample_size, inlier_loss, model_loss = inlier_loss, seed = 314L, 
+                                paralell = FALSE) 
+  
+  design <- checked_input$design
+  n_mising <- checked_input$n_missing
+  y <- checked_input$y
+  
+  # the actual calculation: 
+  if (paralell) {
+    output <- ransac_parallel(formula, design, error_threshold, inlier_threshold, iterations, 
+                              sample_size, inlier_loss, model_loss, seed = 314L, 
+                              paralell = FALSE)
+    return(output)
+  }
+  
+  output <- ransac_sequential(formula, design, error_threshold, inlier_threshold, iterations, 
+                              sample_size, inlier_loss, model_loss, seed = 314L, 
+                              paralell = FALSE)
+  
+  output
+}
+
+ransac_paralell <- function(formula, data, error_threshold, inlier_threshold, iterations, 
                    sample_size, inlier_loss, model_loss = inlier_loss, seed = 314L) {
   ### begin input checking ###
   
@@ -42,7 +84,7 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
   data_reduced <- data[,used_variables]
   
   n_observations <- NCOL(data)
-  all_indices <- 1:n_onservations
+  all_indices <- 1:n_observations
   max_also_inliers <- n_observations - sample_size
   ### first we draw all the indices for the samples 
   
@@ -60,7 +102,7 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
   
 }
   
-sample_inliers <- function(n_observations, sample_size) {
+.sample_inliers <- function(n_observations, sample_size) {
   plan(multiprocess)
   on.exit(plan(sequential))
   
@@ -86,38 +128,5 @@ sample_inliers <- function(n_observations, sample_size) {
 # in the lm_ransac we can modlarize a bit more, i.e. the fitting of the model 
 # and the calculation of the loss 
 
-lm_ransac <- function(data, indices, formula) {
-  model <- lm(formula = formula, 
-              data = data, 
-              subset = indices)
-  coefficients <- model$coefficients # can be treated as a column-vector
-
-  # now we vectorize the loss
-  
-  
-  # loss function must be vectorizable 
-  loss <- loss(predicted_values = design[index,] %*% coefficients, 
-               actual_values = y[indices])
-  
-  # we first susbet the indices that are not already in the maybe_inliers
-  # set and afterwards we subset those cases that 
-  also_inliers <- all_indices[-indices][loss <= error_threshold]
-  
-  final_model <- lm(formula = formula, 
-                    data = data, 
-                    subset = c(indices, also_inliers))
-  
-  final_coefficients <- final_model$coefficients
-  
-  final_loss <- 
-  
-}
-
-eval_lm <- function(data, formula, indices) {
-  coefficients <- lm(formula = formula, 
-                     data = data, 
-                     subset = indices)$coefficients
-  
-  loss <- 
 }
   

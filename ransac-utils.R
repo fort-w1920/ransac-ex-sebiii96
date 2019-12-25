@@ -1,3 +1,4 @@
+
 # generate toy data with very clear inlier / outlier distinction to
 # validate ransaclm. intercept is 0, coefs have value 1.
 # inputs: as named -- number  of observations, number of coefs, fraction of inliers

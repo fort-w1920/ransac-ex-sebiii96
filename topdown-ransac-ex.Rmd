@@ -45,6 +45,7 @@ Natürlich können Sie das obenstehende an Ihre Implementation anpassen oder sic
 
 Ihre Implementation sollte dann -- in etwa -- folgendes Verhalten reproduzieren:
 ```{r, ransac_example, code = readLines("ransac-example.R")}
+
 ```
 
 Hinweis 1: Durch die Formelnotation mit "`- inlier`" bleibt -- in meiner Implementation, zumindest -- die ursprünglich angelegte `inlier`-Variable, welche die wahren *inlier* identifiziert, im Datensatz des Rückgabeobjekts erhalten so dass wir mit `validate_ransac` eine Kreuztabelle der wahren und entdeckten Inlier/Outlier erzeugen können.
