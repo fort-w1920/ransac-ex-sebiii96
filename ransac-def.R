@@ -1,6 +1,7 @@
 require(here)
 
 source(here::here("input_checking.R"))
+source(here::here("ransac_once.R"))
 
 ### ransac ###
 ## inputs
@@ -16,12 +17,13 @@ source(here::here("input_checking.R"))
 # @sample_size - size of the random sample that is used for the fitting of
 #   the sub-model 
 # @inlier_loss - which metric do we use to assess whether points have an 
-#   acceptable distance to the fitted model: is a function f(y, y_pred) that
+#   acceptable distance to the fitted model: is a function f(x,y) that
 #   is VECTORIZABLE
-#   ARGUMENTS MUST ALSO BE CALLED LIKE THAT
+#   
 # @model_loss - how do we assess the quality of the whole model - 
-#   should in the most cases be identical to the inlier_loss and must also have 
-#   the form f(y, y_pred) and must also be VECTORIZABLE 
+#   is a scalar loss function. If NULL (the default) it is set
+#   to the mean of the inlier_loss
+
 
 
 
@@ -29,15 +31,16 @@ source(here::here("input_checking.R"))
 ## question: how do I minimize overhead ??? 
 # e.g. is it ok to open multiprocess, exit and open again ??? probably not 
 
-## question: do we need more than one seed, are there other stochastic elements
-# execpt for the sampling (?) I guess not
-
-# we distinguish two cases: parellelized computation and non-parallelized computation
-
 
 ransac <- function(formula, data, error_threshold, inlier_threshold, iterations, 
-                   sample_size, inlier_loss, model_loss = inlier_loss, seed = 314L, 
-                   paralell = FALSE)  {
+                   sample_size, inlier_loss, model_loss = NULL, seed = 314L, 
+                   parallel = FALSE)  {
+  require(future)
+  require(future.apply)
+  
+  # PSEUDOCODE 
+  plan_before <- getplan()
+  on.exit(plan(plan_before))
   
   # do input-checking and create the design-matrix, n_missings and the 
   # corsponding y-matrix/vector
@@ -48,85 +51,70 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
   design <- checked_input$design
   n_mising <- checked_input$n_missing
   y <- checked_input$y
+  n_complete_obs <- checked_input$n_complete_obs
+  missing <- checked_input$missing
+  n_obs <- NROW(data) # we need this later, when we transfer the indices
+  # from the design matrix to the original data-set (in case of missing values)
   
-  # the actual calculation: 
-  if (paralell) {
-    output <- ransac_parallel(formula, design, error_threshold, inlier_threshold, iterations, 
-                              sample_size, inlier_loss, model_loss, seed = 314L, 
-                              paralell = FALSE)
-    return(output)
+  if (parallel) {
+    plan("parallel")
+  } else {
+    plan("sequential")
   }
   
-  output <- ransac_sequential(formula, design, error_threshold, inlier_threshold, iterations, 
-                              sample_size, inlier_loss, model_loss, seed = 314L, 
-                              paralell = FALSE)
-  
-  output
-}
-
-ransac_paralell <- function(formula, data, error_threshold, inlier_threshold, iterations, 
-                   sample_size, inlier_loss, model_loss = inlier_loss, seed = 314L) {
-  ### begin input checking ###
+  # here we sample the index_matrix 
+  index_matrix <- future.apply::future_replicate(n = iterations, 
+                                                 sample(x = 1:n_complete_obs, 
+                                                        size = sample_size)) 
+  # here we lapply the ransac_once function
   
 
+  # trade-off between readability of code and the choice of a pure function
+  # it should also work without passing the additional arguments 
+  errors <- future.apply::future_vapply(X = index_matrix, 
+                                        FUN = ransac_once(inliers_maybe), 
+                                        FUN.VALUE = numeric(1), # additional arguments
+                                        formula = formula, 
+                                        design = design, 
+                                        y = y, 
+                                        inlier_loss = inlier_loss, 
+                                        model_loss = model_loss, 
+                                        error_threshold = error_threshold, 
+                                        n_observations = n_complete_obs, 
+                                        inlier_threshold = inlier_threshold)
   
-  require(future.apply)
-  require(future)
-  
-  used_variables <- all.vars(formula)
-  y_name <- used_variables[1]
-  
-  design <- model.matrix(formula = formula, 
-                           object = data)
-  y <- data[[y_name]]
-  
-  # in case there are a lot of unnecessary 
-  data_reduced <- data[,used_variables]
-  
-  n_observations <- NCOL(data)
-  all_indices <- 1:n_observations
-  max_also_inliers <- n_observations - sample_size
-  ### first we draw all the indices for the samples 
-  
-  ### attention ### we need to parallelize the seeding as well, this is done with 
-  # future_replicate but still check how the seeds are generated, can we store 
-  # them somehow and give them back ? would be nice 
-  
-  maybe_inliers <- sample_inliers(n_observations = n_observations, 
-                                  sample_size = sample_size)
-  
-  # now we parallelize the actual ransac-function
-  
-  
-  ###
-  
-}
-  
-.sample_inliers <- function(n_observations, sample_size) {
-  plan(multiprocess)
-  on.exit(plan(sequential))
-  
-  sample_inliers_once <- function() {
-    sample(1:n_observations, size = sample_size)
+  if (all(errors == Inf)) {
+    warning("ransac-algorithm did not succeed.")
+    return(NULL)
   }
-  # we give back a sample_size x n_observations matrix, i.e. the i-th column 
-  # contains the i-th sample of indices
-  future.vapply::future_replicate(x = 1L:n_observations, 
-                                  FUN = sample_inliers_once, 
-                                  FUN.VALUE = integer(sample_size), 
-                                  future.seed = seed)
+  
+  # get index of best fit
+  best_model_indices <- which(errors == max(errors))
+  
+  if (length(best_model_indices) > 1) {
+    warning("there are at least two models with equal performance. The optimal 
+            model is randomly selected.")
+  }
+  
+  best_model_index <- sample(x = best_model_indices, size = 1)
+  
+  optimal_points <- index_matrix[, best_model_index]
+  
+  optimal_model <- lm(formula = formula, 
+                      data = design, 
+                      subset = optimal_points)
+  
+  optimal_points_logical <- 1:n_complete_obs %in% optimal_points
+  
+  used_data <- data.frame(data[!missing, , drop   = FALSE], 
+                          "logical" = optimal_points_logical)
+  
+  list("model" = optimal_model, 
+       "data" = used_data)
   
 }
 
 
-### lm_ransac ###
-# this is a function that fits a linear model 
-
-# there are different possibilities: I can either let lm_ransac do the whole
-# job or i 
-
-# in the lm_ransac we can modlarize a bit more, i.e. the fitting of the model 
-# and the calculation of the loss 
-
-}
-  
+ransac(formula = formula(y~.), data = ransac_data, error_threshold = 20, 
+       inlier_threshold = 100, iterations = 100, sample_size = 70,
+       inlier_loss = function(y))

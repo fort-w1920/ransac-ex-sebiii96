@@ -1,16 +1,14 @@
 ### ransac_once ###
 ## the ransac algorithm consists of iteratively fitting a model to a random 
-# 
-
-
+# sub-sample, extending the consensus set. Fitting a model on the whole consensus
+# set if it is large enough and choosing the model with the best fit on the 
+# consensus set
+# the funcion ransac_once does all this for one subsample. 
 ## output: we only return the error of the model. 
-# if the consensus set is to small this error is set to Inf
+# if the consensus set is to small or something did not work (meaning there
+# are NAs in the coefficient-vector)
 
-#TODO
-# we still need to check that the result also makes sense if the fitting 
-# process did not succeed or if there is multicolinearity
-# in this case the coefficients are NA, which also means that 
-# the predictions will be NA and the loss therefore as well 
+
 
 ransac_once <- function(formula, design, inliers_maybe, y, inlier_loss, model_loss, 
                         error_threshold, n_observations, inlier_threshold) {

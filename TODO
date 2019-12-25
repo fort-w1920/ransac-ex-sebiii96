@@ -1,0 +1,6 @@
+TODO file
+
+1. fix the input_checking.R file (especially checks on model_loss and 
+inlier_loss)
+
+2. Generate the test data and the corresponding tests with testthat 
