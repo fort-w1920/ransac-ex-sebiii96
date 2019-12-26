@@ -2,6 +2,7 @@ require(here)
 
 source(here::here("input_checking.R"))
 source(here::here("ransac_once.R"))
+source(here::here("ransac-utils.R"))
 
 ### ransac ###
 ## inputs
@@ -35,26 +36,12 @@ source(here::here("ransac_once.R"))
 ransac <- function(formula, data, error_threshold, inlier_threshold, iterations, 
                    sample_size, inlier_loss, model_loss = NULL, seed = 314L, 
                    parallel = FALSE)  {
+  ### parallelization ###
   require(future)
   require(future.apply)
   
-  # PSEUDOCODE 
-  plan_before <- getplan()
+  plan_before <- plan()
   on.exit(plan(plan_before))
-  
-  # do input-checking and create the design-matrix, n_missings and the 
-  # corsponding y-matrix/vector
-  checked_input <- check_inputs(formula, data, error_threshold, inlier_threshold, iterations, 
-                                sample_size, inlier_loss, model_loss = inlier_loss, seed = 314L, 
-                                paralell = FALSE) 
-  
-  design <- checked_input$design
-  n_mising <- checked_input$n_missing
-  y <- checked_input$y
-  n_complete_obs <- checked_input$n_complete_obs
-  missing <- checked_input$missing
-  n_obs <- NROW(data) # we need this later, when we transfer the indices
-  # from the design matrix to the original data-set (in case of missing values)
   
   if (parallel) {
     plan("parallel")
@@ -62,50 +49,69 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
     plan("sequential")
   }
   
-  # here we sample the index_matrix 
+  ### input checkign and creation of relevant variables ###
+  checked_input <- check_inputs(formula = formula, data = data, seed = seed,
+                                error_threshold = error_threshold, 
+                                inlier_threshold = inlier_threshold, 
+                                iterations = iterations, sample_size = sample_size, 
+                                inlier_loss = inlier_loss, model_loss = model_loss,  
+                                parallel = parallel) 
+  
+  design <- checked_input$design
+  n_mising <- checked_input$n_missing
+  y <- checked_input$y
+  n_complete_obs <- checked_input$n_complete_obs
+  missing <- checked_input$missing
+  model_loss <- checked_input$model_loss #in case model_loss is left unspecified
+  # it is defined to be the mean of the inlier_loss
+  n_obs <- NROW(data) 
+  
+  ### generate random_samples ###
   index_matrix <- future.apply::future_replicate(n = iterations, 
                                                  sample(x = 1:n_complete_obs, 
                                                         size = sample_size)) 
-  # here we lapply the ransac_once function
   
-
-  # trade-off between readability of code and the choice of a pure function
-  # it should also work without passing the additional arguments 
-  errors <- future.apply::future_vapply(X = index_matrix, 
-                                        FUN = ransac_once(inliers_maybe), 
-                                        FUN.VALUE = numeric(1), # additional arguments
-                                        formula = formula, 
-                                        design = design, 
-                                        y = y, 
-                                        inlier_loss = inlier_loss, 
-                                        model_loss = model_loss, 
-                                        error_threshold = error_threshold, 
-                                        n_observations = n_complete_obs, 
-                                        inlier_threshold = inlier_threshold)
+  ### ransac-algorithm ###
+  
+  errors <- ransac_once(design = design, 
+                        formula = formula, 
+                        y = y, 
+                        inlier_loss = inlier_loss, model_loss = model_loss, 
+                        error_threshold = error_threshold, 
+                        n_observations = n_complete_obs, 
+                        inlier_threshold = inlier_threshold, 
+                        inliers_maybe = index_matrix[,1]
+                        )
+  
+  # errors <- future.apply::future_vapply(X = index_matrix, 
+  #                                       FUN = ransac_once, 
+  #                                       FUN.VALUE = numeric(1), # additional arguments
+  #                                       formula = formula, 
+  #                                       design = design, 
+  #                                       y = y, 
+  #                                       inlier_loss = inlier_loss, 
+  #                                       model_loss = model_loss, 
+  #                                       error_threshold = error_threshold, 
+  #                                       n_observations = n_complete_obs, 
+  #                                       inlier_threshold = inlier_threshold)
   
   if (all(errors == Inf)) {
     warning("ransac-algorithm did not succeed.")
     return(NULL)
   }
   
-  # get index of best fit
-  best_model_indices <- which(errors == max(errors))
-  
+  ### get optimal model(s) ###
+  best_model_indices <- which(errors == min(errors))
   if (length(best_model_indices) > 1) {
     warning("there are at least two models with equal performance. The optimal 
             model is randomly selected.")
   }
-  
   best_model_index <- sample(x = best_model_indices, size = 1)
-  
   optimal_points <- index_matrix[, best_model_index]
-  
   optimal_model <- lm(formula = formula, 
                       data = design, 
                       subset = optimal_points)
-  
   optimal_points_logical <- 1:n_complete_obs %in% optimal_points
-  
   used_data <- data.frame(data[!missing, , drop   = FALSE], 
                           "logical" = optimal_points_logical)
   
@@ -114,7 +120,11 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
   
 }
 
+ransac_data <- make_ransac_data(n_obs = 1000, n_coef = 10, inlier_fraction = 0.7)
+ransac_data <- ransac_data[,-12]
+inlier_loss1 <- function(x,y) (x - y)^2
 
-ransac(formula = formula(y~.), data = ransac_data, error_threshold = 20, 
+ransac(formula = formula(y~. ), data = ransac_data, error_threshold = 20, 
        inlier_threshold = 100, iterations = 100, sample_size = 70,
-       inlier_loss = function(y))
+       inlier_loss = inlier_loss1)
+

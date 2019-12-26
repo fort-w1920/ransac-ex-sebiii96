@@ -4,3 +4,12 @@ TODO file
 inlier_loss)
 
 2. Generate the test data and the corresponding tests with testthat 
+
+3. How do we avoid problems with the model_matrix the formula and the intercept
+if we generate the model-matrix 
+
+4. Fix that the model in the ransac body 
+(not in any of the subfunctions) still uses the design matrix as the data
+and not in the formula. So the formula that uses the design matrix should 
+be created in check_inputs (and not in ransac_once) so it can be used here 
+as well 

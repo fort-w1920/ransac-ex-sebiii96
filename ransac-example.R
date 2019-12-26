@@ -9,3 +9,4 @@ ransac_simple <- ransaclm(y ~ . - inlier,
 )
 validate_ransac(ransac_simple)
 
+forp
