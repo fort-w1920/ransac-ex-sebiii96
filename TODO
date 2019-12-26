@@ -13,3 +13,14 @@ if we generate the model-matrix
 and not in the formula. So the formula that uses the design matrix should 
 be created in check_inputs (and not in ransac_once) so it can be used here 
 as well 
+
+5. Wenn wir die FUnktion ohne das vapply auf die erste Spalte von 
+matrix_index anwenden funktioniert es. Mit future.vapply aber nicht-mehr
+Wir müssen also prüfen was genau den Fehler verursach 
+
+6. Komisches Verhalten mit den formulas. Wenn wir die formula in check_inputs 
+spezifizieren funktioniert es nicht mehr. Deswegen müssen wir sie zwei mal 
+also einmal in ransac_once und einmal im main-body der Funktion spezifizieren. 
+Da muss es doch eine Lösung geben ???
+
+7. inlier_loss and model_loss are poorly chosen names 

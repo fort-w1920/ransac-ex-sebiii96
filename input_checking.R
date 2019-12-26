@@ -33,6 +33,7 @@ check_inputs <- function(formula, data, error_threshold, inlier_threshold, itera
                     check_true(formula_variables %in% colnames(data)), 
                     combine = "and")
   
+  
   # some preliminary checking that data is actually a data-frame
   # after removing the missings we will check again
   checkmate::assert_data_frame(data)

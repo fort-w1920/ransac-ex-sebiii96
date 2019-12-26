@@ -1,15 +1,14 @@
 ### generate data for the testing of the ransac function ###
 
-n <- 10000
-a <- 1 
-b <- 2
-sd_y <- 1
-sd_x <- 10
-x <- rnorm(n, sd = sd_x)
-y <- a + b * x + rnorm(n, sd = sd)
+n <- 1000
 
-dat <- data.frame(y = y, x = x)
-plot(dat)
+generate_data <- function(n, n_param) {
+  
+}
 
-l2_loss <- function(x, y) (x - y)^2
-MSE <- function(x, y) mean((x - y)^2)
+x <- rnorm(1000)
+y <- 2*x + rnorm(1000, 0.3)
+test_data <- data.frame(y = y, x = x)
+l2_inlier_loss <- function(x, y) (x - y)^2
+l2_model_loss <- function(x, y) mean((x - y)^2)
+n_obs <- 00

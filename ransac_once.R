@@ -13,13 +13,15 @@
 ransac_once <- function(formula, design, inliers_maybe, y, inlier_loss, model_loss, 
                         error_threshold, n_observations, inlier_threshold) {
 
-  ### we create a formula that uses the model_matrix: "y ~ mm - 1"
-  # we have to include -1, as the model matrix already includes the intercept
-  # column if specified by the user
-  target_name <- all.vars(formula)[1]
-  formula <- as.formula(paste(target_name, " ~ design - 1", sep = ""))
+  # if we don't do this the models are fitted in the environment
+  # we were in before we entered the ransac_once function. this is problematic
+  # as we also use variables (like inliers_maybe, inliers_all) within the lm
+  # call that do not exist in that environment which gives rise to a 
+  # confusing error 'object inliers_maybe' not found even though it clearly
+  # exists in this environment where we are now
+  environment(formula) <- environment()
   
-  ### estmate the model based on the random sample
+  ### estimate the initial model based on the random sample
   model_initial <- lm(formula = formula, subset = inliers_maybe)
   coefficients_initial <- model_initial$coefficients
   
@@ -38,7 +40,7 @@ ransac_once <- function(formula, design, inliers_maybe, y, inlier_loss, model_lo
   losses <- inlier_loss(y_pred_initial, y[-inliers_maybe])
   
   # we extend the set by those that were not sampled but have a small enough loss
-  inliers_also <- (1:n_observations[-inliers_maybe])[losses <= error_threshold]
+  inliers_also <- ((1:n_observations)[-inliers_maybe])[losses <= error_threshold]
   inliers_all <- c(inliers_maybe, inliers_also)
   
   # check whether sufficiently many 
@@ -73,16 +75,17 @@ error_threshold1 = 10
 n_observations1 = 1000
 inlier_threshold1 = 200
 
-ransac_once(formula = formula(y  ~. -1), 
+index_matrix <- matrix(c(1:100, 2:101), ncol = 2)
+
+ransac_once(formula = formula(y  ~. ),
             design = design1,
-            inliers_maybe = inliers_maybe1, 
-            y = y, 
-            inlier_loss = inlier_loss1, 
-            model_loss = model_loss1, 
-            error_threshold = error_threshold1, 
+            inliers_maybe = index_matrix[,1],
+            y = y,
+            inlier_loss = inlier_loss1,
+            model_loss = model_loss1,
+            error_threshold = error_threshold1,
             n_observations = 1000,
             inlier_threshold = inlier_threshold1)
-
 
 
 

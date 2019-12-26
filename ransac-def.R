@@ -57,14 +57,20 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
                                 inlier_loss = inlier_loss, model_loss = model_loss,  
                                 parallel = parallel) 
   
+  # this should be called design_matrix to make it clear it is no data frame
   design <- checked_input$design
-  n_mising <- checked_input$n_missing
-  y <- checked_input$y
+  y <- checked_input$y 
   n_complete_obs <- checked_input$n_complete_obs
-  missing <- checked_input$missing
+  missing <- checked_input$missing #this is needed later to get the used_data 
   model_loss <- checked_input$model_loss #in case model_loss is left unspecified
   # it is defined to be the mean of the inlier_loss
   n_obs <- NROW(data) 
+  
+  ### we create a formula that uses the model_matrix: "y ~ mm - 1"
+  # we have to include -1, as the model matrix already includes the intercept
+  # column if specified by the user
+  target_name <- all.vars(formula)[1]
+  formula <- as.formula(paste(target_name, " ~ design - 1", sep = ""))
   
   ### generate random_samples ###
   index_matrix <- future.apply::future_replicate(n = iterations, 
@@ -73,32 +79,37 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
   
   ### ransac-algorithm ###
   
-  errors <- ransac_once(design = design, 
-                        formula = formula, 
-                        y = y, 
-                        inlier_loss = inlier_loss, model_loss = model_loss, 
-                        error_threshold = error_threshold, 
-                        n_observations = n_complete_obs, 
-                        inlier_threshold = inlier_threshold, 
-                        inliers_maybe = index_matrix[,1]
-                        )
+  # errors <- ransac_once(design = design, 
+  #                       formula = formula, 
+  #                       y = y, 
+  #                       inlier_loss = inlier_loss, model_loss = model_loss, 
+  #                       error_threshold = error_threshold, 
+  #                       n_observations = n_complete_obs, 
+  #                       inlier_threshold = inlier_threshold, 
+  #                       inliers_maybe = index_matrix[,1])
+  # 
   
-  # errors <- future.apply::future_vapply(X = index_matrix, 
-  #                                       FUN = ransac_once, 
-  #                                       FUN.VALUE = numeric(1), # additional arguments
-  #                                       formula = formula, 
-  #                                       design = design, 
-  #                                       y = y, 
-  #                                       inlier_loss = inlier_loss, 
-  #                                       model_loss = model_loss, 
-  #                                       error_threshold = error_threshold, 
-  #                                       n_observations = n_complete_obs, 
-  #                                       inlier_threshold = inlier_threshold)
+  #preallocation of memory space
+  errors <- vector(length = iterations)
+  errors <- future.apply::future_apply(X = index_matrix,
+                                      FUN = ransac_once,
+                                      MARGIN = 2, # additional arguments
+                                      formula = formula,
+                                      design = design,
+                                      y = y,
+                                      inlier_loss = inlier_loss,
+                                      model_loss = model_loss,
+                                      error_threshold = error_threshold,
+                                      n_observations = n_complete_obs,
+                                      inlier_threshold = inlier_threshold)
   
   if (all(errors == Inf)) {
     warning("ransac-algorithm did not succeed.")
     return(NULL)
   }
+  
+  target_name <- all.vars(formula)[1]
+  formula <- as.formula(paste(target_name, " ~ design - 1", sep = ""))
   
   ### get optimal model(s) ###
   best_model_indices <- which(errors == min(errors))
@@ -108,15 +119,14 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
   }
   best_model_index <- sample(x = best_model_indices, size = 1)
   optimal_points <- index_matrix[, best_model_index]
-  optimal_model <- lm(formula = formula, 
-                      data = design, 
-                      subset = optimal_points)
+  optimal_model <- lm(formula = formula, subset = optimal_points)
   optimal_points_logical <- 1:n_complete_obs %in% optimal_points
   used_data <- data.frame(data[!missing, , drop   = FALSE], 
                           "logical" = optimal_points_logical)
   
   list("model" = optimal_model, 
-       "data" = used_data)
+       "data" = used_data, 
+       "errors" = errors)
   
 }
 
@@ -124,7 +134,7 @@ ransac_data <- make_ransac_data(n_obs = 1000, n_coef = 10, inlier_fraction = 0.7
 ransac_data <- ransac_data[,-12]
 inlier_loss1 <- function(x,y) (x - y)^2
 
-ransac(formula = formula(y~. ), data = ransac_data, error_threshold = 20, 
-       inlier_threshold = 100, iterations = 100, sample_size = 70,
-       inlier_loss = inlier_loss1)
+mod <- ransac(formula = formula(y~. ), data = ransac_data, error_threshold = 20, 
+              inlier_threshold = 100, iterations = 100, sample_size = 70,
+              inlier_loss = inlier_loss1)
 
