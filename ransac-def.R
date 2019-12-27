@@ -36,17 +36,20 @@ source(here::here("ransac-utils.R"))
 ransac <- function(formula, data, error_threshold, inlier_threshold, iterations, 
                    sample_size, inlier_loss, model_loss = NULL, seed = 314L, 
                    parallel = FALSE)  {
-  ### parallelization ###
-  require(future)
-  require(future.apply)
+  set.seed(seed)
   
-  plan_before <- plan()
-  on.exit(plan(plan_before))
+  ### parallelization ###
+  # install packages if not already installed
+  if (!require("future")) install.packages("future")
+  if (!require("future.apply")) install.packages("future.apply")
+
+  plan_before <- future::plan()
+  on.exit(future::plan(plan_before))
   
   if (parallel) {
-    plan("parallel")
+    future::plan("multiprocess")
   } else {
-    plan("sequential")
+    future::plan("sequential")
   }
   
   ### input checkign and creation of relevant variables ###
@@ -89,7 +92,10 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
   #                       inliers_maybe = index_matrix[,1])
   # 
   
-  #preallocation of memory space
+  # preallocation of memory space
+  # comment: ransac_once only gives back the errors and we can recover the 
+  # best model by that error. this safes memory space although we have 
+  # to reestimate the optimal model -> what is better ???
   errors <- vector(length = iterations)
   errors <- future.apply::future_apply(X = index_matrix,
                                       FUN = ransac_once,
@@ -101,40 +107,49 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
                                       model_loss = model_loss,
                                       error_threshold = error_threshold,
                                       n_observations = n_complete_obs,
-                                      inlier_threshold = inlier_threshold)
+                                      inlier_threshold = inlier_threshold, 
+                                      output = "error")
   
   if (all(errors == Inf)) {
     warning("ransac-algorithm did not succeed.")
     return(NULL)
   }
   
-  target_name <- all.vars(formula)[1]
-  formula <- as.formula(paste(target_name, " ~ design - 1", sep = ""))
-  
   ### get optimal model(s) ###
-  best_model_indices <- which(errors == min(errors))
-  if (length(best_model_indices) > 1) {
+  best_model_index <- which(errors == min(errors))
+  if (length(best_model_index) > 1) {
     warning("there are at least two models with equal performance. The optimal 
             model is randomly selected.")
+    best_model_index <- sample(x = best_model_index, size = 1)
   }
-  best_model_index <- sample(x = best_model_indices, size = 1)
-  optimal_points <- index_matrix[, best_model_index]
+  
+  # get the points which were used for the optimal model
+  optimal_points <- ransac_once(formula = formula,
+                                inliers_maybe = index_matrix[,best_model_index],
+                                design = design,
+                                y = y,
+                                inlier_loss = inlier_loss,
+                                model_loss = model_loss,
+                                error_threshold = error_threshold,
+                                n_observations = n_complete_obs,
+                                inlier_threshold = inlier_threshold, 
+                                output = "all_indices")
+  # estimtate the optimal model
   optimal_model <- lm(formula = formula, subset = optimal_points)
-  optimal_points_logical <- 1:n_complete_obs %in% optimal_points
+  
+  # generate the data that was used for the estimation of the optimal model
   used_data <- data.frame(data[!missing, , drop   = FALSE], 
-                          "logical" = optimal_points_logical)
+                          "logical" = optimal_points)
+  
+  # because we estimated the model with y ~ design - 1 the names of the coeficients
+  # are design(Intercept), therefore we have to remove the "design" of the names
+  # as a variable could also be called "design" we do this by removing the first
+  # 6 letters
+
+  names(optimal_model[["coefficients"]]) <- colnames(design)
   
   list("model" = optimal_model, 
-       "data" = used_data, 
-       "errors" = errors)
-  
+       "data" = used_data)
 }
 
-ransac_data <- make_ransac_data(n_obs = 1000, n_coef = 10, inlier_fraction = 0.7)
-ransac_data <- ransac_data[,-12]
-inlier_loss1 <- function(x,y) (x - y)^2
-
-mod <- ransac(formula = formula(y~. ), data = ransac_data, error_threshold = 20, 
-              inlier_threshold = 100, iterations = 100, sample_size = 70,
-              inlier_loss = inlier_loss1)
 

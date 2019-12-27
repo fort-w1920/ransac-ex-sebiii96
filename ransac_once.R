@@ -11,7 +11,8 @@
 
 ### we dont need the formula as the design matrix is passed
 ransac_once <- function(formula, design, inliers_maybe, y, inlier_loss, model_loss, 
-                        error_threshold, n_observations, inlier_threshold) {
+                        error_threshold, n_observations, inlier_threshold, 
+                        output) {
 
   # if we don't do this the models are fitted in the environment
   # we were in before we entered the ransac_once function. this is problematic
@@ -43,7 +44,7 @@ ransac_once <- function(formula, design, inliers_maybe, y, inlier_loss, model_lo
   inliers_also <- ((1:n_observations)[-inliers_maybe])[losses <= error_threshold]
   inliers_all <- c(inliers_maybe, inliers_also)
   
-  # check whether sufficiently many 
+  # check whether sufficiently many inliers were found
   if (length(inliers_all) < inlier_threshold) {
     return(Inf)
   }
@@ -62,30 +63,13 @@ ransac_once <- function(formula, design, inliers_maybe, y, inlier_loss, model_lo
   # on the whole consensus set (which has to be a scalar)
   loss_total <- model_loss(y[inliers_all],
                            design[inliers_all, , drop = FALSE] %*% coefficients_total)
-  loss_total
+  if (output == "error") return(loss_total)
+  else if (output == "all_indices") {
+    return(1:n_observations %in% inliers_all)
+  } else {
+    stop("wrongly specified output")
+  }
 }
-
-ransac_data <- make_ransac_data(n_obs = 1000, n_coef = 10, inlier_fraction = 0.7)
-ransac_data <- as.data.frame(ransac_data[,-12])
-design1 <- model.matrix(y~., ransac_data)
-y = ransac_data[,"y"]
-inlier_loss1 <- function(x,y) (x - y)^2
-model_loss1 <- function(x, y) mean((x - y)^2)
-error_threshold1 = 10
-n_observations1 = 1000
-inlier_threshold1 = 200
-
-index_matrix <- matrix(c(1:100, 2:101), ncol = 2)
-
-ransac_once(formula = formula(y  ~. ),
-            design = design1,
-            inliers_maybe = index_matrix[,1],
-            y = y,
-            inlier_loss = inlier_loss1,
-            model_loss = model_loss1,
-            error_threshold = error_threshold1,
-            n_observations = 1000,
-            inlier_threshold = inlier_threshold1)
 
 
 

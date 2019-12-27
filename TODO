@@ -1,26 +1,14 @@
 TODO file
 
-1. fix the input_checking.R file (especially checks on model_loss and 
-inlier_loss)
 
-2. Generate the test data and the corresponding tests with testthat 
-
-3. How do we avoid problems with the model_matrix the formula and the intercept
-if we generate the model-matrix 
-
-4. Fix that the model in the ransac body 
-(not in any of the subfunctions) still uses the design matrix as the data
-and not in the formula. So the formula that uses the design matrix should 
-be created in check_inputs (and not in ransac_once) so it can be used here 
-as well 
-
-5. Wenn wir die FUnktion ohne das vapply auf die erste Spalte von 
-matrix_index anwenden funktioniert es. Mit future.vapply aber nicht-mehr
-Wir müssen also prüfen was genau den Fehler verursach 
-
-6. Komisches Verhalten mit den formulas. Wenn wir die formula in check_inputs 
-spezifizieren funktioniert es nicht mehr. Deswegen müssen wir sie zwei mal 
-also einmal in ransac_once und einmal im main-body der Funktion spezifizieren. 
-Da muss es doch eine Lösung geben ???
-
-7. inlier_loss and model_loss are poorly chosen names 
+1. Generate more tests, does it work as well with parallel = TRUE
+   especially: create a univariate example that can be plotted.
+2. Update names of files: substitute "_" by "-"
+3. Create an example that can be visualised 
+4. (Optional) update argument names of the function: inlier_loss and 
+   model_loss are okish but not ideal
+5. Apply the styler-addin and the checklist-function
+6. Do profiling especially with respect to the parallelization
+7. Should we really load the packages or only install them if they
+   are not installed? In the second case we could remove all the 
+  

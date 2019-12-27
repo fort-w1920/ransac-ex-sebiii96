@@ -1,3 +1,8 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
 ## (Ran-)Sackgang
 
 Wir implementieren die [RANSAC-Methode](https://en.wikipedia.org/wiki/Random_sample_consensus) für lineare Modelle in einer Funktion `ransaclm` mit (mindestens) Argumenten `formula` (wie in `lm`), `data` (wie in `lm`), `error_threshold` (=$t$ im verlinkten Wikipedia-Artikel), `inlier_threshold` (=$d$ im verlinkten) und `iterations`.  
@@ -26,8 +31,7 @@ Code der für erwartbare Fehler und ungeeignete Inputs informative Fehlermeldung
 
 -----
 
-```{r, echo = FALSE, code = readLines("ransac-def.R")}
-```
+
 
 #### Testcode:
 
