@@ -1,11 +1,8 @@
 TODO file
 
+### ALL DONE 
 
-
-1. Generate more tests, does it work as well with parallel = TRUE
-   especially: create a univariate example that can be plotted.
-2. Update names of files: substitute "_" by "-"
-3. Create an example that can be visualised 
-
-5. Apply the styler-addin and the checklist-function
-
+optional: 
+1. write ransaclm in such a way that for the sequential case the optimal
+   model is updated in each iteration (in case of an improvement) which 
+   will probably make the code more memory efficient (?)

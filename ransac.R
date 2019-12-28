@@ -1,129 +1,127 @@
-require(here)
-
-source(here::here("input-checking.R"))
+source(here::here("ransac-input-checking.R"))
 source(here::here("ransac-once.R"))
-source(here::here("ransac-utils.R"))
 
-### ransac ###
+### ransaclm ###
 ## inputs ##
 # @formula
-#   is a formula that is used to fit the linear models
+#   is the formula that is to be fitted by lm
 # @data
-#   is a data-frame that contains all the relevant data 
+#   must be a dataframe that contains all the variables specified in formula
 # @error_threshold
-#   is a positive numeric-value that gives the threshold 
+#   is a positive numeric-value that gives the threshold
 #   when a point that is not used in the fitting process is also 'accepted' as
 #   a inlier
 # @inlier_threshold
-#   is a count > 0 that indicates how many points - that are 
+#   is a count > 0 that indicates how many points - that are
 #   not used in the fitting proces - must have a loss smaller than error_threshold
 #   such that the model is actually considered a candidate
-# @iterations 
+# @iterations
 #   the number of iterations for the ransac-algorithm
 # @sample_size
-#   size of the random sample that is used for the fitting of
-#   each subsample
+#   size of the random sample on the basis of which the models are initially estimated
 # @inlier_loss
-#   which metric do we use to assess whether points have an 
-#   acceptable distance to the fitted model: is a function f(x,y) that
-#   is VECTORIZABLE
-# @model_loss 
-#   how do we assess the quality of the whole model - 
-#   is a scalar loss function. If NULL (the default) it is set
-#   to the mean of the inlier_loss
+#   which metric do we use to assess whether points have an
+#   acceptable error. MUST BE VECTORIZABLE
+# @model_loss
+#   how do we assess the quality of the whole model -
+#   is a SCALER LOSS FUNCTION
+#   If NULL (the default) it is set to the mean of the inlier_loss
 # @seed
-#   which seed should be set before sampling the various subsamples
-# @parallel 
-#   should the algorithm be run in parallel?
+#   which seed should be set before sampling
+# @parallel
+#   logical variable that indicates whether the algorithm should be run in parallel
 
 ## output ##
-# a list that contains: 
-#   "model" - the fitted optimal model 
-#   "data" - the data that was used, i.e. the input data without the 
-#            rows that had missing values in relevant columns
-#            and extended by a row "logical" that indicates whether the corresponding
-#            observation was contained in the best consensus set
+# a list that contains:
+#   "model" - the fitted optimal model
+#   "data"  - the data that was used, i.e. the input data without the
+#             rows that had missing values in relevant columns
+#             and extended by a row ".consensus_set" that indicates whether the
+#             corresponding observation was contained in the best consensus set
 
-## some comments ##
-# - for the non-parallel execution it is probably more memory-efficient 
-# to simply write a sequential loop and update the optimal model and the error
-# in each iteration, but that would make the code more complicated
-# 
-# - the optimal model gets estimated three times which is of course unnece
-
-
-ransac <- function(formula, data, error_threshold, inlier_threshold, iterations, 
-                   sample_size, inlier_loss, model_loss = NULL, seed = 314L, 
-                   parallel = FALSE)  {
+ransaclm <- function(formula, data, error_threshold, inlier_threshold, iterations,
+                     sample_size, inlier_loss, model_loss = NULL, seed = 314L,
+                     parallel = FALSE) {
   set.seed(seed)
   if (!require("future")) install.packages("future")
   if (!require("future.apply")) install.packages("future.apply")
 
-  ### input checkign and creation of relevant variables ###
-  checked_input <- check_inputs(formula = formula, data = data, seed = seed,
-                                error_threshold = error_threshold, 
-                                inlier_threshold = inlier_threshold, 
-                                iterations = iterations, sample_size = sample_size, 
-                                inlier_loss = inlier_loss, model_loss = model_loss,  
-                                parallel = parallel) 
-  
-  design <- checked_input$design
-  y <- checked_input$y 
-  y_name <- checked_input$y_name
-  missing <- checked_input$missing 
+  ### input checking and creation of relevant variables ###
+  checked_input <- check_inputs(
+    formula = formula, data = data, seed = seed,
+    error_threshold = error_threshold,
+    inlier_threshold = inlier_threshold,
+    iterations = iterations, sample_size = sample_size,
+    inlier_loss = inlier_loss, model_loss = model_loss,
+    parallel = parallel
+  )
+
+  design <- checked_input[["design"]]
+  y <- checked_input[["y"]]
+  y_name <- checked_input[["y_name"]]
+  missing <- checked_input[["missing"]]
   n_complete_obs <- NROW(design)
-  # in case model_loss == NULL the model_loss is set to the mean of the inlier_loss
-  model_loss <- checked_input$model_loss 
+  # in case model_loss == NULL check_inputs set model_loss to be the mean
+  # of the inlier _loss
+  if (is.null(model_loss)) model_loss <- checked_input[["model_loss"]]
 
 
-  
-  
+
+
   ### we create a formula that uses the design-matrix: "y ~ design - 1"
-  # -1 has to be included as the design-matrix already contains
+  # -1 has to be included as the design-matrix already contains the intercept
+  # the reason why the estimation is based on the design-matrix is that therefore
+  # the design-matrix does not have to be created in each iteration of the
+  # ransac-algorithm
   design_formula <- as.formula(paste(y_name, " ~ design - 1", sep = ""))
-  
-  
-  ### set the plan according to the action of 'choice' ###
+
+
+  ### possible parallelization ###
   plan_before <- future::plan()
   on.exit(future::plan(plan_before))
-  
+
   if (parallel) {
     future::plan("multiprocess")
   } else {
     future::plan("sequential")
   }
-  
+
+
   ### generate random_samples ###
-  index_matrix <- future.apply::future_replicate(n = iterations, 
-                                                 sample(x = 1:n_complete_obs, 
-                                                        size = sample_size)) 
-  
-  ### ransac-algorithm ###
-  
-  # preallocation of memory space
-  # comment: ransac_once only gives back the errors and we can recover the 
-  # column from index_matrix (i.e. the subsample) that yielded the best fit
-  # with that information and can reestimate the model 
+  index_matrix <- future.apply::future_replicate(
+    n = iterations,
+    sample(
+      x = 1:n_complete_obs,
+      size = sample_size
+    )
+  )
+
+  # fit all the models and give back the corresponding quality of fit of the models
+  # which are saved in the vector 'errors'
 
   errors <- vector(length = iterations)
-  errors <- future.apply::future_apply(X = index_matrix,
-                                      FUN = ransac_once,
-                                      MARGIN = 2, 
-                                      formula = design_formula,
-                                      design = design,
-                                      y = y,
-                                      inlier_loss = inlier_loss,
-                                      model_loss = model_loss,
-                                      error_threshold = error_threshold,
-                                      n_observations = n_complete_obs,
-                                      inlier_threshold = inlier_threshold, 
-                                      output = "error")
-  
+  errors <- future.apply::future_apply(
+    X = index_matrix,
+    FUN = ransaclm_once,
+    MARGIN = 2,
+    formula = design_formula,
+    design = design,
+    y = y,
+    inlier_loss = inlier_loss,
+    model_loss = model_loss,
+    error_threshold = error_threshold,
+    n_observations = n_complete_obs,
+    inlier_threshold = inlier_threshold,
+    output = "error"
+  )
+
+  # the error is set to Inf if either the inlier_threshold is not surpassed
+  # or the estimation did procude NAs
   if (all(errors == Inf)) {
     warning("ransac-algorithm did not succeed.")
     return(NULL)
   }
-  
+
   ### get optimal model(s) ###
   best_model_index <- which(errors == min(errors))
   if (length(best_model_index) > 1) {
@@ -131,34 +129,38 @@ ransac <- function(formula, data, error_threshold, inlier_threshold, iterations,
             model is randomly selected.")
     best_model_index <- sample(x = best_model_index, size = 1)
   }
-  
+
   # get the best model and the corresponding consensus set: this can also be done
-  # by the ransac_once function, but we have to speficy output = "model_and_indices"
-  
-  model_and_points <- ransac_once(formula = design_formula,
-                                  inliers_maybe = index_matrix[,best_model_index],
-                                  design = design,
-                                  y = y,
-                                  inlier_loss = inlier_loss,
-                                  model_loss = model_loss,
-                                  error_threshold = error_threshold,
-                                  n_observations = n_complete_obs,
-                                  inlier_threshold = inlier_threshold, 
-                                  output = "model_and_indices")
-  
-  optimal_model <- model_and_points[["model"]]
-  
-   
-  output_data <- data.frame(data[!missing, , drop   = FALSE], 
-                          "logical" = model_and_points[["indices"]])
-  
+  # by the ransaclm_once function, but we have to speficy output = "model_and_indices"
+  # as opposed to output = "error" like before
+
+  model_and_indices <- ransaclm_once(
+    formula = design_formula,
+    inliers_maybe = index_matrix[, best_model_index],
+    design = design,
+    y = y,
+    inlier_loss = inlier_loss,
+    model_loss = model_loss,
+    error_threshold = error_threshold,
+    n_observations = n_complete_obs,
+    inlier_threshold = inlier_threshold,
+    output = "model_and_indices"
+  )
+
+  optimal_model <- model_and_indices[["model"]]
+
+
+  output_data <- data.frame(data[!missing, , drop = FALSE],
+    ".consensus_set" = model_and_indices[["indices"]]
+  )
+
   # because we estimated the model with y ~ design - 1 the names of the coeficients
   # are design(Intercept), design(X1), ... which we don't want
 
   names(optimal_model[["coefficients"]]) <- colnames(design)
-  
-  list("model" = optimal_model, 
-       "data" = output_data)
+
+  list(
+    "model" = optimal_model,
+    "data" = output_data
+  )
 }
-
-
