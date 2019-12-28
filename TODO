@@ -1,14 +1,11 @@
 TODO file
 
 
+
 1. Generate more tests, does it work as well with parallel = TRUE
    especially: create a univariate example that can be plotted.
 2. Update names of files: substitute "_" by "-"
 3. Create an example that can be visualised 
-4. (Optional) update argument names of the function: inlier_loss and 
-   model_loss are okish but not ideal
+
 5. Apply the styler-addin and the checklist-function
-6. Do profiling especially with respect to the parallelization
-7. Should we really load the packages or only install them if they
-   are not installed? In the second case we could remove all the 
-  
+

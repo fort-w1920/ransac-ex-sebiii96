@@ -1,7 +1,7 @@
 ### ransac-test-data ###
 
 source(here::here("ransac-utils.R"))
-source(here::here("input_checking.R"))
+source(here::here("input-checking.R"))
 source(here::here("ransac-def.R"))
 
 set.seed(314)

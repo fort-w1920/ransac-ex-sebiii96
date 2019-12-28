@@ -1,33 +1,45 @@
 ### check inputs ###
 ## what it does: 
-# does a lot of input checking on the arguments of ransac, and in addition to that
-# creates the design-matrix from data and formula and drops observations with missing 
-# values (at the end of the file there is a list with everything that is checked)
-## input: simply the arguments of ransac  
+#   do input checking for the arguments of ransac and create
+#   important variables that are required later in ransac
 ## output: list with 
-# @design - the design matrix for the formula where all observations with missing
-#   values are dropped
-# @n_missing - how many observations contained at least one NA
-# @missing - numeric vector that contains the indices of the observations
-#   (from the initial data) that do not contain NAs
-# @y - the target vector with missing values removed
-# @n_complete_obs - number of observations that do not contain any NAs
+#   @design 
+#     - the design matrix for the formula where all observations with missing
+#       values are dropped
+#   @n_missing 
+#     - how many observations contained at least one NA
+#   @missing 
+#     - numeric vector that contains the indices of the observations
+#       (from the initial data) that do not contain NAs
+#   @y 
+#     - the target vector with missing values removed
+#   @y_name
+#     - the name of the target/y-variable
+#   @n_complete_obs 
+#     - number of observations that do not contain any NAs
+#   @missing
+#     - a logical vector with length n_obs that indicates whether the c
+#   @model_loss
+#     - the model_loss (is only relevant if no model_loss was specifide
+#       then the model loss is set to the mean of the inlier_loss)
+
 
 check_inputs <- function(formula, data, error_threshold, inlier_threshold, iterations, 
                          sample_size, inlier_loss, model_loss, seed, 
                          parallel) {
-  require(checkmate)
+  if (!require(checkmate)) install.packages("checkmate")
   
   # we need to check that the formula is well defined, we do this with 
   # all.vars and check wether all the names exist in the colnames of data
-  # for the names of the regressors we need to be careful, 
-  # as the formula can also be "y ~." in which case the naive check would fail, 
-  # as all.vars(formula) = c("y", ".") and "." not in colnames(data)
-  # this means that we cannot use "." as a column name in the data (but this
-  # is also true for the lm function in general so this should not be of concern)
+  # the case formula = y~. has to be treated differently however
   
   formula_variables <- all.vars(formula)
-  formula_variables <- formula_variables[formula_variables != "."]
+  y_name <- formula_variables[1]
+  
+  if ("." %in% formula_variables) {
+    formula_variables <- colnames(data)
+  }
+  
   
   checkmate::assert(check_formula(formula),
                     check_true(all(formula_variables %in% colnames(data))), 
@@ -37,9 +49,9 @@ check_inputs <- function(formula, data, error_threshold, inlier_threshold, itera
   # after removing the missings we will check again
   checkmate::assert_data_frame(data)
   
-  # now we generate the data-frame that is really relevant for us, i.e. 
-  # the design matrix for the given formula + we drop rows with missing values 
-  missing <- apply(X = data, 
+  # note that it is important that we remove those rows that have NAs iN
+  # the variables that actually appear in the formula
+  missing <- apply(X = data[, formula_variables], 
                    MARGIN = 1, 
                    FUN = function(x) any(is.na(x)))
   
@@ -50,17 +62,14 @@ check_inputs <- function(formula, data, error_threshold, inlier_threshold, itera
   }
 
   
-  y <- data[!missing, all.vars(formula)[1], drop = TRUE] # otherwise we get the 
-  # error in ransac_once that y is of the wrong type (list) when fitting 
-  # the linear models 
+  y <- data[!missing, y_name] # if we would set drop = FALSE it would not work 
+  # as y is passed to the lm function later and must not be a list 
+  
+  # be really careful here: model.matrix also drops the NAs but only as long as 
+  # options('na.action') == 'na.omit'. so we include the !missing
   design <- model.matrix(object = formula, 
                          data = data[!missing,, drop = FALSE]) 
 
-
-  # not really neccessary but better be sure 
-  # it is a good decision to initialise the model matix right from the start so not each 
-  # individual model fit has to calculate the matrix again
-  
   n_complete_obs <- NROW(design)
   # now we check that the models fitted on the samples are actually 
   # identifiable, i.e. #beta < n. we should also check that there 
@@ -68,10 +77,11 @@ check_inputs <- function(formula, data, error_threshold, inlier_threshold, itera
   checkmate::assert(checkmate::check_matrix(design, min.cols = 1, 
                                             max.cols = sample_size - 1, 
                                             min.rows = inlier_threshold + 1))
+  
   # note: there is no point in checking singularities of X^tX as we will use so many 
   # different design-matrices due do the random sub-sampling in the algorithm 
   
-  # check that the error threshold is a positive number 
+  # check that the error threshold is a positive number, non finite 
   checkmate::assert(checkmate::check_numeric(error_threshold, finite = TRUE, len = 1, 
                                              any.missing = FALSE), 
                     checkmate::check_true(error_threshold > 0), 
@@ -125,7 +135,7 @@ check_inputs <- function(formula, data, error_threshold, inlier_threshold, itera
   checkmate::assert_logical(parallel, any.missing = FALSE, len = 1)
   
   # we give back the number of rows with missing values and the design-matrix
-  list(design = design, n_missing = n_missing, y = y, 
+  list(design = design, n_missing = n_missing, y = y, y_name = y_name, 
        n_complete_obs = n_complete_obs, missing = missing, 
        model_loss = model_loss)
 }

@@ -1,9 +1,9 @@
 library(testthat)
 
-source(here::here("ransac_once.R"))
+source(here::here("ransac-once.R"))
 source(here::here("ransac-def.R"))
 source(here::here("ransac-test-data.R"))
-source(here::here("input_checking.R"))
+source(here::here("input-checking.R"))
 
 context("testing ransac")
 
@@ -56,6 +56,8 @@ test_that("ransac works", {
                     output_simple$model[["coefficients"]])
   expect_equivalent(ransac_default()[["data"]], 
                     output_simple[["data"]])
+  expect_equivalent(ransac_default(parallel = TRUE), 
+                    ransac_default(parallel = FALSE))
 })
 
 
