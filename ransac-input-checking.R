@@ -80,7 +80,7 @@ check_inputs <- function(formula, data, error_threshold, inlier_threshold,
   # are more than inlier_threshold observations
   checkmate::assert(checkmate::check_matrix(design,
     min.cols = 1,
-    max.cols = sample_size - 1,
+    max.cols = sample_size,
     min.rows = inlier_threshold + 1
   ))
 
